@@ -12,13 +12,7 @@ public class SimpleToken implements Token {
 
     @Override
     public String getTranslation() {
-        //TODO uppercase mask
-        //TODO punctuation mask
-        String translation = engine.translate(source);
-        //TODO apply uppercase mask
-        //TODO apply punctuation mask
-
-        return translation;
+        return engine.translate(source);
     }
 
 }

@@ -1,62 +1,77 @@
 package marekpribyl.translator;
 
-import java.util.Map;
-import java.util.WeakHashMap;
+import static java.lang.String.format;
 
-/**
- *
- FILTERS: (as-is to output)
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
- Words that end in “way” are not modified.
- stairway stays as stairway
+import org.apache.commons.lang3.StringUtils;
 
- Blank strings
+import com.google.common.collect.ImmutableSortedSet;
+import lombok.NonNull;
 
- punctuations only
 
- [:alpha:] only
-
- MODIFIERS:
-
- Words that start with a consonant:
- have their first letter moved to the end of the word and the letters “ay” added to the end.
- Hello becomes Ellohay
-
- Words that start with a vowel:
- have the letters “way” added to the end.
- apple becomes appleway
-
- RESTORERS: (need to record capitals and punctuations)
-
- Punctuation must remain in the same relative place from the end of the word.
- can’t becomes antca’y
- end. becomes endway.
-
- Capitalization must remain in the same place.
- Beach becomes Eachbay
- McCloud becomes CcLoudmay
-
- COMPOSITION: (split and process one-by-one)
-
- Hyphens are treated as two words
- this-thing becomes histay-hingtay
- */
 public class TranslatorEngine {
 
-    private static final int CACHE_SIZE = 1_000;
+    private static final String PUNCTUATION_REGEX = "\\p{Punct}";
 
-    //TODO limit cache size
-    private final Map<String, String> cache = new WeakHashMap<>(CACHE_SIZE);
+    private static final String UPPERCASE_REGEX = "\\p{Lu}";
 
-    public String translate(String source) {
-        if (cache.containsKey(source)) {
-            return cache.get(source);
+    private static final Pattern PUNCTUATION_PATTERN = Pattern.compile(PUNCTUATION_REGEX);
+
+    private static final Pattern UPPERCASE_PATTERN = Pattern.compile(UPPERCASE_REGEX);
+
+    private final ImmutableSortedSet<TranslationRule> rules = ImmutableSortedSet.<TranslationRule>naturalOrder()
+            .add(new ConsonantRule())
+            .add(new VowelRule())
+            .add(new NoOpRule())
+            .build();
+
+    public String translate(@NonNull String source) {
+        String toBeTranslated = normalizeForTranslation(source);
+        String translation = rules.stream()
+                .sorted()
+                .filter(translationRule -> translationRule.applyTo(toBeTranslated))
+                .findFirst()
+                .map(translationRule -> translationRule.translate(toBeTranslated))
+                .orElseThrow(() -> new IllegalStateException(format("Something went wrong, string [%s] has not been translated", source)));
+
+        String restoredUppercase = restoreUppercase(translation, source);
+
+        return restorePunctuation(restoredUppercase, source);
+    }
+
+    private String normalizeForTranslation(String source) {
+        return source.toLowerCase().replaceAll(PUNCTUATION_REGEX, "");
+    }
+
+    private String restorePunctuation(String src, String original) {
+        String reversedOriginal = StringUtils.reverse(original);
+        String reversedSource = StringUtils.reverse(src);
+
+        int position = 0;
+        StringBuilder sb = new StringBuilder();
+        Matcher matcher = PUNCTUATION_PATTERN.matcher(reversedOriginal);
+        while (matcher.find()) {
+            int current = matcher.start();
+            sb.append(reversedSource.substring(position, current)). append(reversedOriginal.charAt(current));
+            position = current;
         }
-        //TODO implement it
-        String translated = source;
-        cache.putIfAbsent(source, translated);
 
-        return translated;
+        sb.append(reversedSource.substring(position, src.length()));
+
+        return StringUtils.reverse(sb.toString());
+    }
+
+    private String restoreUppercase(String src, String mask) {
+        Matcher matcher = UPPERCASE_PATTERN.matcher(mask);
+        char[] charSource = src.toCharArray();
+        while (matcher.find()) {
+            int position = matcher.start();
+            charSource[position] = Character.toUpperCase(charSource[position]);
+        }
+
+        return String.valueOf(charSource);
     }
 
 }
